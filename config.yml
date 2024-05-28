@@ -1,0 +1,18 @@
+authorName: your_name
+experimentName: YOLOv8_CIFAR10_Scaling
+trialConcurrency: 2
+maxExperimentDuration: 1h
+maxTrialNumber: 20
+trainingService:
+  platform: local
+searchSpaceFile: search_space.json
+trialCommand: python3 train.py
+trialGpuNumber: 1
+tuner:
+  name: TPE
+  classArgs:
+    optimize_mode: minimize
+assessor:
+  name: Medianstop
+  classArgs:
+    optimize_mode: minimize
