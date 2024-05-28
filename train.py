@@ -6,6 +6,9 @@ from ultralytics import YOLO  # YOLO model from ultralytics
 import nni  # NNI for hyperparameter tuning
 from typing import List, Tuple  # Type hints
 
+# Check for CUDA
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 # Prepare the CIFAR-10 dataset
 def prepare_data(batch_size: int = 64) -> Tuple[DataLoader, DataLoader]:
@@ -57,6 +60,7 @@ def generate_model_variant(base_model_path: str, scaling_factor: float) -> YOLO:
                 layer.conv.stride,
                 layer.conv.padding,
             )  # Update the convolutional layer
+    model.to(device)  # Move the model to the GPU if available
     return YOLO(model)  # Return the scaled model
 
 
@@ -81,6 +85,9 @@ def train_model(
     for epoch in range(num_epochs):
         running_loss = 0.0
         for images, labels in train_loader:
+            images, labels = images.to(device), labels.to(
+                device
+            )  # Move images and labels to GPU if available
             optimizer.zero_grad()  # Zero the parameter gradients
             outputs = model(images)  # Forward pass
             loss = model.loss(
