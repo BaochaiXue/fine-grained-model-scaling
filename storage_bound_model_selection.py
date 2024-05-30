@@ -9,7 +9,6 @@ from torch.optim import Optimizer
 from torch_pruning import DependencyGraph
 from torchvision import datasets, transforms, models
 from torch.utils.data import DataLoader
-from model_variant_generate import models_read, CandidateModel
 
 
 def load_data(batch_size: int = 128) -> Tuple[DataLoader, DataLoader]:

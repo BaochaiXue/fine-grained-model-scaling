@@ -38,19 +38,32 @@ def load_data(batch_size: int = 128) -> Tuple[DataLoader, DataLoader]:
     return trainloader, testloader
 
 
-def initialize_model(model_name: str, device: torch.device) -> Module:
+def initialize_model(
+    model_name: str, device: torch.device, pretrained: bool = True
+) -> Module:
     if model_name == "vgg16":
-        model: Module = models.vgg16(weights=models.VGG16_Weights.DEFAULT).to(device)
+        if pretrained:
+            model: Module = models.vgg16(weights=models.VGG16_Weights.DEFAULT)
+        else:
+            model: Module = models.vgg16(weights=None)
     elif model_name == "resnet18":
-        model: Module = models.resnet18(weights=models.ResNet18_Weights.DEFAULT).to(
-            device
-        )
+        if pretrained:
+            model: Module = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        else:
+            model: Module = models.resnet18(weights=None)
     elif model_name == "mobilenet_v3_large":
-        model: Module = models.mobilenet_v3_large(
-            weights=models.MobileNet_V3_Large_Weights.DEFAULT
-        ).to(device)
+        if pretrained:
+            model: Module = models.mobilenet_v3_large(
+                weights=models.MobileNet_V3_Large_Weights.DEFAULT
+            )
+        else:
+            model: Module = models.mobilenet_v3_large(weights=None)
     else:
         raise ValueError(f"Unsupported model name: {model_name}")
+
+    # Move the model to the specified device
+    model.to(device)
+
     return model
 
 
@@ -153,59 +166,36 @@ def evaluate(model: Module, dataloader: DataLoader, device: torch.device) -> flo
 
 
 def model_saving(model: Module, model_name: str, pruning_factor: float) -> None:
-    if not os.path.exists("model_variants"):
-        os.makedirs("model_variants")
+    # Create the base directory if it does not exist
+    base_dir: str = "model_variants"
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir)
+        print(f"Created directory: {base_dir}")
 
-    if not os.path.exists(f"model_variants/{model_name}"):
-        os.makedirs(f"model_variants/{model_name}")
+    # Create the model-specific directory if it does not exist
+    model_dir: str = os.path.join(base_dir, model_name)
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+        print(f"Created directory: {model_dir}")
 
-    # if pruning_factor is 0, then it is the original model
+    # Determine the filename based on the pruning factor
     if pruning_factor == 0:
-        torch.save(model, f"model_variants/{model_name}/{model_name}_original.pth")
+        file_name: str = f"{model_name}_original.pth"
     else:
-        torch.save(
-            model,
-            f"model_variants/{model_name}/{model_name}_pruned_{pruning_factor}.pth",
-        )
+        file_name: str = f"{model_name}_pruned_{pruning_factor}.pth"
+
+    # Full path to save the model
+    save_path: str = os.path.join(model_dir, file_name)
+
+    # Save the model
+    try:
+        torch.save(model.state_dict(), save_path)
+        print(f"Model saved to: {save_path}")
+    except Exception as e:
+        print(f"Error saving the model: {e}")
 
 
-class CandidateModel:
-    def __init__(self, model: Module, size: int, prune_rate: float, name: str):
-        self.model = model
-        self.size = size
-        self.prune_rate = prune_rate
-        self.name = name
-
-
-def models_read(
-    path: str, model_name: str, device: torch.device
-) -> List[CandidateModel]:
-    models: List[CandidateModel] = []
-    for file in os.listdir(path):
-        if file.endswith(".pth"):
-            model = torch.load(os.path.join(path, file))
-            size = os.path.getsize(os.path.join(path, file))  # size in bytes
-            # if it is the original model
-            if "original" in file:
-                prune_rate = 0
-            else:
-                prune_rate = float(file.split("_")[-1].split(".")[0])
-            models.append(CandidateModel(model, size, prune_rate, model_name))
-
-    return models
-
-
-def model_read(path: str, model_name: str, device: torch.device) -> CandidateModel:
-    model = torch.load(path)
-    size = os.path.getsize(path)
-    if "original" in path:
-        prune_rate = 0
-    else:
-        prune_rate = float(path.split("_")[-1].split(".")[0])
-    return CandidateModel(model, size, prune_rate, model_name)
-
-
-def main(model_name: str, pruning_factor: float):
+def main(model_name: str, pruning_factor: float, epochs: int, iterations: int):
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     trainloader: DataLoader
     testloader: DataLoader
@@ -213,7 +203,7 @@ def main(model_name: str, pruning_factor: float):
     model: Module = initialize_model(model_name, device)
     criterion: CrossEntropyLoss = CrossEntropyLoss()
     # we use self-adaptive learning rate
-    optimizer: Optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+    optimizer: Optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     if not np.isclose(pruning_factor, 0):
         train_and_prune(
             model,
@@ -221,12 +211,10 @@ def main(model_name: str, pruning_factor: float):
             criterion,
             optimizer,
             device,
-            iterative_steps=int(
-                5 * (pruning_factor / 0.05)
-            ),  # 5 steps for each 0.05 pruning factor
+            iterative_steps=iterations,
             pruning_factor_total=pruning_factor,
         )
-    fine_tune_model(model, trainloader, criterion, optimizer, device, epochs=100)
+    fine_tune_model(model, trainloader, criterion, optimizer, device, epochs=epochs)
     accuracy: float = evaluate(model, testloader, device)
     print(
         f"Pruned Model Accuracy for {model_name} with pruning factor {pruning_factor}: {accuracy}%"
@@ -234,12 +222,17 @@ def main(model_name: str, pruning_factor: float):
     model_saving(model, model_name, pruning_factor)
     del model
     torch.cuda.empty_cache()
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":
     args: List[str] = sys.argv
-    if len(args) != 3:
-        raise ValueError("Please provide model name and pruning factor")
+    if len(args) != 5:
+        raise ValueError(
+            "Please provide the model name, pruning factor, epochs, and iterations."
+        )
     model_name: str = args[1]
     pruning_factor: float = float(args[2])
-    main(model_name, pruning_factor)
+    epochs: int = int(args[3])
+    iterations: int = int(args[4])
+    main(model_name, pruning_factor, epochs, iterations)
