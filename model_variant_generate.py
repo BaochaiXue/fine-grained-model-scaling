@@ -76,7 +76,6 @@ def prune_model_with_depgraph(
 
 def train_and_prune(
     model: Module,
-    DG: tp.DependencyGraph,
     trainloader: DataLoader,
     criterion: CrossEntropyLoss,
     optimizer: Optimizer,
@@ -84,8 +83,12 @@ def train_and_prune(
     iterative_steps: int,
     pruning_factor_total: float,
 ) -> None:
-    # since pruning factor total is prune_factor ** iterative_steps
-    pruning_factor: float = pruning_factor_total ** (1 / iterative_steps)
+    pruning_factor: float = 1 - np.power(1 - pruning_factor_total, 1 / iterative_steps)
+    print(f"Pruning Factor: {pruning_factor}")
+    sample_inputs: torch.Tensor
+    sample_inputs, _ = next(iter(trainloader))
+    sample_inputs = sample_inputs.to(device)
+    DG: tp.DependencyGraph = build_dependency_graph(model, sample_inputs)
     for step in range(iterative_steps):
         model.train()
         for inputs, targets in trainloader:
@@ -95,11 +98,14 @@ def train_and_prune(
             loss: torch.Tensor = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
-
         prune_model_with_depgraph(DG, model, pruning_factor, device)
-
         macs, params = tp.utils.count_ops_and_params(model, inputs)
         print(f"Step {step+1}: MACs = {macs}, Params = {params}")
+        sample_inputs: torch.Tensor
+        sample_inputs, _ = next(iter(trainloader))
+        sample_inputs = sample_inputs.to(device)
+        DG: tp.DependencyGraph = build_dependency_graph(model, sample_inputs)
+    print("Finished Training and Pruning the model")
 
 
 def fine_tune_model(
@@ -113,6 +119,8 @@ def fine_tune_model(
     for epoch in range(epochs):
         model.train()
         running_loss: float = 0.0
+        inputs: torch.Tensor
+        targets: torch.Tensor
         for inputs, targets in trainloader:
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
@@ -130,9 +138,11 @@ def evaluate(model: Module, dataloader: DataLoader, device: torch.device) -> flo
     correct: int = 0
     total: int = 0
     with torch.no_grad():
+        inputs: torch.Tensor
+        targets: torch.Tensor
         for inputs, targets in dataloader:
             inputs, targets = inputs.to(device), targets.to(device)
-            outputs = model(inputs)
+            outputs: torch.Tensor = model(inputs)
             _, predicted = outputs.max(1)
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
@@ -204,11 +214,6 @@ if __name__ == "__main__":
         ]
         for pruning_factor in pruning_factor_total:
             model: Module = initialize_model(model_name, device)
-            sample_inputs: torch.Tensor
-            sample_inputs, _ = next(iter(trainloader))
-            sample_inputs = sample_inputs.to(device)
-
-            DG: tp.DependencyGraph = build_dependency_graph(model, sample_inputs)
 
             criterion: CrossEntropyLoss = CrossEntropyLoss()
             optimizer: Optimizer = torch.optim.SGD(
@@ -217,7 +222,6 @@ if __name__ == "__main__":
 
             train_and_prune(
                 model,
-                DG,
                 trainloader,
                 criterion,
                 optimizer,
