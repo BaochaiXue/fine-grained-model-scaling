@@ -10,6 +10,7 @@ from torch.nn import CrossEntropyLoss
 from typing import Tuple, List
 import numpy as np
 import os
+import sys
 
 
 def load_data(batch_size: int = 128) -> Tuple[DataLoader, DataLoader]:
@@ -25,7 +26,7 @@ def load_data(batch_size: int = 128) -> Tuple[DataLoader, DataLoader]:
     )
     trainloader: DataLoader = DataLoader(
         trainset, batch_size=batch_size, shuffle=True, num_workers=2
-    )
+    )  # train=True: Loads the training set of the CIFAR-10 dataset.
 
     testset: datasets.CIFAR10 = datasets.CIFAR10(
         root="./data", train=False, download=True, transform=transform
@@ -168,79 +169,77 @@ def model_saving(model: Module, model_name: str, pruning_factor: float) -> None:
         )
 
 
-if __name__ == "__main__":
+class CandidateModel:
+    def __init__(self, model: Module, size: int, prune_rate: float, name: str):
+        self.model = model
+        self.size = size
+        self.prune_rate = prune_rate
+        self.name = name
+
+
+def models_read(
+    path: str, model_name: str, device: torch.device
+) -> List[CandidateModel]:
+    models: List[CandidateModel] = []
+    for file in os.listdir(path):
+        if file.endswith(".pth"):
+            model = torch.load(os.path.join(path, file))
+            size = os.path.getsize(os.path.join(path, file))  # size in bytes
+            # if it is the original model
+            if "original" in file:
+                prune_rate = 0
+            else:
+                prune_rate = float(file.split("_")[-1].split(".")[0])
+            models.append(CandidateModel(model, size, prune_rate, model_name))
+
+    return models
+
+
+def model_read(path: str, model_name: str, device: torch.device) -> CandidateModel:
+    model = torch.load(path)
+    size = os.path.getsize(path)
+    if "original" in path:
+        prune_rate = 0
+    else:
+        prune_rate = float(path.split("_")[-1].split(".")[0])
+    return CandidateModel(model, size, prune_rate, model_name)
+
+
+def main(model_name: str, pruning_factor: float):
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     trainloader: DataLoader
     testloader: DataLoader
     trainloader, testloader = load_data()
-
-    for model_name in ["vgg16", "resnet18", "mobilenet_v3_large"]:
-        model: Module = initialize_model(model_name, device)
-
-        criterion: CrossEntropyLoss = CrossEntropyLoss()
-        optimizer: Optimizer = torch.optim.SGD(
-            model.parameters(), lr=0.001, momentum=0.9
+    model: Module = initialize_model(model_name, device)
+    criterion: CrossEntropyLoss = CrossEntropyLoss()
+    # we use self-adaptive learning rate
+    optimizer: Optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+    if not np.isclose(pruning_factor, 0):
+        train_and_prune(
+            model,
+            trainloader,
+            criterion,
+            optimizer,
+            device,
+            iterative_steps=int(
+                5 * (pruning_factor / 0.05)
+            ),  # 5 steps for each 0.05 pruning factor
+            pruning_factor_total=pruning_factor,
         )
+    fine_tune_model(model, trainloader, criterion, optimizer, device, epochs=100)
+    accuracy: float = evaluate(model, testloader, device)
+    print(
+        f"Pruned Model Accuracy for {model_name} with pruning factor {pruning_factor}: {accuracy}%"
+    )
+    model_saving(model, model_name, pruning_factor)
+    del model
+    torch.cuda.empty_cache()
 
-        # fine-tune the original model
-        fine_tune_model(model, trainloader, criterion, optimizer, device, epochs=100)
 
-        # Evaluate the pruned model
-        accuracy: float = evaluate(model, testloader, device)
-        print(f"Original Model Accuracy for {model_name}: {accuracy}%")
-
-        # save the original model to model_variants folder
-        model_saving(model, model_name, 0)
-
-        # prune the model and generate model variants
-        pruning_factor_total: List[float] = [
-            0.05,
-            0.1,
-            0.15,
-            0.2,
-            0.25,
-            0.3,
-            0.35,
-            0.4,
-            0.45,
-            0.5,
-            0.55,
-            0.6,
-            0.65,
-            0.7,
-            0.75,
-            0.8,
-            0.85,
-            0.9,
-            0.95,
-        ]
-        for pruning_factor in pruning_factor_total:
-            model: Module = initialize_model(model_name, device)
-
-            criterion: CrossEntropyLoss = CrossEntropyLoss()
-            optimizer: Optimizer = torch.optim.SGD(
-                model.parameters(), lr=0.001, momentum=0.9
-            )
-
-            train_and_prune(
-                model,
-                trainloader,
-                criterion,
-                optimizer,
-                device,
-                iterative_steps=int(
-                    5 * (pruning_factor / 0.05)
-                ),  # 5 steps for each 0.05 pruning factor
-                pruning_factor_total=pruning_factor,
-            )
-
-            fine_tune_model(
-                model, trainloader, criterion, optimizer, device, epochs=100
-            )
-
-            accuracy: float = evaluate(model, testloader, device)
-            print(
-                f"Pruned Model Accuracy for {model_name} with pruning factor {pruning_factor}: {accuracy}%"
-            )
-
-            model_saving(model, model_name, pruning_factor)
+if __name__ == "__main__":
+    args: List[str] = sys.argv
+    if len(args) != 3:
+        raise ValueError("Please provide model name and pruning factor")
+    model_name: str = args[1]
+    pruning_factor: float = float(args[2])
+    main(model_name, pruning_factor)
