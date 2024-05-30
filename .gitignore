@@ -3,3 +3,6 @@ data/cifar-10-python.tar.gz
 data
 RT-mdl：支持实时混合深度学习任务在边缘平台(1).pdf
 model_variants
+Torch_Pruning_wiki.pdf
+mobileNetV3.pdf
+draft.ipynb
