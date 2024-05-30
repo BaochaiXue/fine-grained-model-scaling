@@ -1,8 +1,9 @@
-data/cifar-10-batches-py/batches.meta
-data/cifar-10-python.tar.gz
 data
 RT-mdl：支持实时混合深度学习任务在边缘平台(1).pdf
 model_variants
 Torch_Pruning_wiki.pdf
 mobileNetV3.pdf
 draft.ipynb
+websiteReference.txt
+Fang_DepGraph_Towards_Any_Structural_Pruning_CVPR_2023_paper.pdf
+Distributed_Training_for_Deep_Learning_Models_On_An_Edge_Computing_Network_Using_Shielded_Reinforcement_Learning.pdf

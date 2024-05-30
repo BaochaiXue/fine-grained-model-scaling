@@ -91,6 +91,8 @@ def train_and_prune(
     DG: tp.DependencyGraph = build_dependency_graph(model, sample_inputs)
     for step in range(iterative_steps):
         model.train()
+        inputs: torch.Tensor
+        targets: torch.Tensor
         for inputs, targets in trainloader:
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
@@ -181,7 +183,7 @@ if __name__ == "__main__":
         )
 
         # fine-tune the original model
-        fine_tune_model(model, trainloader, criterion, optimizer, device, epochs=500)
+        fine_tune_model(model, trainloader, criterion, optimizer, device, epochs=100)
 
         # Evaluate the pruned model
         accuracy: float = evaluate(model, testloader, device)
@@ -233,7 +235,7 @@ if __name__ == "__main__":
             )
 
             fine_tune_model(
-                model, trainloader, criterion, optimizer, device, epochs=500
+                model, trainloader, criterion, optimizer, device, epochs=100
             )
 
             accuracy: float = evaluate(model, testloader, device)
