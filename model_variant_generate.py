@@ -13,13 +13,28 @@ import os
 import sys
 
 
-def load_data(batch_size: int = 128) -> Tuple[DataLoader, DataLoader]:
-    transform: transforms.Compose = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ]
-    )
+def load_data(
+    batch_size: int = 128, vit_16_using: bool = False
+) -> Tuple[DataLoader, DataLoader]:
+    if vit_16_using:
+        transform: transforms.Compose = transforms.Compose(
+            [
+                transforms.Resize(224),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
+                ),
+            ]
+        )
+    else:
+        transform: transforms.Compose = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
+                ),
+            ]
+        )
 
     trainset: datasets.CIFAR10 = datasets.CIFAR10(
         root="./data", train=True, download=True, transform=transform
@@ -58,6 +73,14 @@ def initialize_model(
             )
         else:
             model: Module = models.mobilenet_v3_large(weights=None)
+    elif model_name == "vit_b_16":
+        if pretrained:
+            model: Module = models.vit_b_16(
+                weights=models.ViT_B_16_Weights.IMAGENET1K_V1
+            )
+        else:
+            model: Module = models.vit_b_16(weights=None)
+        model.heads.head = nn.Linear(model.heads.head.in_features, 10)
     else:
         raise ValueError(f"Unsupported model name: {model_name}")
 
@@ -78,11 +101,19 @@ def build_dependency_graph(
 def prune_model_with_depgraph(
     DG: tp.DependencyGraph, model: Module, pruning_factor: float, device: torch.device
 ) -> None:
+    last_layer_name: str = "heads.head"
     for name, module in model.named_modules():
-        if isinstance(module, nn.Conv2d):
+        if isinstance(module, nn.Conv2d) and name != last_layer_name:
             prune_idxs = list(range(0, int(module.out_channels * pruning_factor)))
             group = DG.get_pruning_group(
                 module, tp.prune_conv_out_channels, idxs=prune_idxs
+            )
+            if DG.check_pruning_group(group):
+                group.prune()
+        elif isinstance(module, nn.Linear) and name != last_layer_name:
+            prune_idxs = list(range(0, int(module.out_features * pruning_factor)))
+            group = DG.get_pruning_group(
+                module, tp.prune_linear_out_channels, idxs=prune_idxs
             )
             if DG.check_pruning_group(group):
                 group.prune()
@@ -199,11 +230,17 @@ def main(model_name: str, pruning_factor: float, epochs: int, iterations: int):
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     trainloader: DataLoader
     testloader: DataLoader
-    trainloader, testloader = load_data()
+    trainloader, testloader = load_data(
+        batch_size=128, vit_16_using="vit" in model_name
+    )
     model: Module = initialize_model(model_name, device)
     criterion: CrossEntropyLoss = CrossEntropyLoss()
-    # we use self-adaptive learning rate
-    optimizer: Optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    if "ViT" in model_name:
+        optimizer: Optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
+    else:
+        optimizer: Optimizer = torch.optim.SGD(
+            model.parameters(), lr=0.001, momentum=0.9
+        )
     if not np.isclose(pruning_factor, 0):
         train_and_prune(
             model,

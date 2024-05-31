@@ -14,6 +14,25 @@ import sys
 from model_variant_generate import initialize_model
 
 
+def load_data(batch_size: int) -> DataLoader:
+    transform: transforms.Compose = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ]
+    )
+
+    testset: datasets.CIFAR10 = datasets.CIFAR10(
+        root="./data", train=False, download=True, transform=transform
+    )
+    # load fixed testset
+    testloader: DataLoader = DataLoader(
+        testset, batch_size=batch_size, shuffle=False, num_workers=2
+    )
+
+    return testloader
+
+
 class CandidateModel:
     def __init__(self, model: Module, size: int, prune_rate: float, name: str):
         self.model = model
@@ -33,25 +52,6 @@ def model_read(path: str, model_name: str, device: torch.device) -> CandidateMod
     else:
         prune_rate: float = float(path.split("_")[-1].split(".")[0])
     return CandidateModel(model, size, prune_rate, model_name)
-
-
-def load_data(batch_size: int) -> DataLoader:
-    transform: transforms.Compose = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ]
-    )
-
-    testset: datasets.CIFAR10 = datasets.CIFAR10(
-        root="./data", train=False, download=True, transform=transform
-    )
-    # load fixed testset
-    testloader: DataLoader = DataLoader(
-        testset, batch_size=batch_size, shuffle=False, num_workers=2
-    )
-
-    return testloader
 
 
 def evaluate(model: nn.Module, dataloader: DataLoader, device: torch.device) -> float:

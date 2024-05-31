@@ -6,7 +6,8 @@ from typing import Iterator
 
 epochs: int = 1
 iterations_in_pruning: int = 1
-models_name: List[str] = ["vgg16", "resnet18", "mobilenet_v3_large"]
+models_name: List[str] = ["vit_b_16"]
+# ["vgg16", "resnet18", "mobilenet_v3_large", "vit_b_16"]
 model_gen_script: str = "model_variant_generate.py"
 
 
