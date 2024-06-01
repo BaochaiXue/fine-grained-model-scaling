@@ -5,7 +5,7 @@ from typing import List, Tuple
 from typing import Iterator
 
 epochs: int = 1
-iterations_in_pruning: int = 1
+iterations_in_pruning: int = 10
 models_name: List[str] = ["vgg16", "resnet50", "mobilenet_v3_large", "vit_b_16"]
 model_gen_script: str = "model_variant_generate.py"
 

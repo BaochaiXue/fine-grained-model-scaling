@@ -238,7 +238,7 @@ def main(model_name: str, pruning_ratio: float, epochs: int, iterations: int):
     # randomly sample one as the example input
     example_inputs: torch.Tensor
     example_inputs, _ = next(iter(trainloader))
-    if not np.isclose(pruning_factor, 0):
+    if not np.isclose(pruning_ratio, 0):
         prune_model(model, example_inputs, None, model_name, pruning_ratio, iterations)
     criterion: nn.CrossEntropyLoss = nn.CrossEntropyLoss()
     optimizer: optim.Optimizer
