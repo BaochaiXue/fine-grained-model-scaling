@@ -1,224 +1,180 @@
-import torch
-import torch.nn as nn
-import torchvision
-import torch_pruning as tp
-from torchvision import datasets, transforms, models
-from torch.utils.data import DataLoader
-from torch.nn import Module
-from torch.optim import Optimizer
-from torch.nn import CrossEntropyLoss
-from typing import Tuple, List
-import numpy as np
 import os
 import sys
+from typing import Any, Dict, Tuple, Callable, List
+import argparse
+
+import torch
+import torch.nn as nn
+import torch_pruning as tp
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+from torchvision.models import (
+    vit_b_16,
+    ViT_B_16_Weights,
+    vgg16,
+    VGG16_Weights,
+    resnet50,
+    ResNet50_Weights,
+    mobilenet_v3_large,
+    MobileNet_V3_Large_Weights,
+)
+from torchvision.models.vision_transformer import VisionTransformer
+import numpy as np
+import torch.optim as optim
 
 
-def load_data(
-    batch_size: int = 128, vit_16_using: bool = False
-) -> Tuple[DataLoader, DataLoader]:
-    if vit_16_using:
-        transform: transforms.Compose = transforms.Compose(
+def load_data(batch_size: int, vit_16_using: bool) -> Tuple[DataLoader, DataLoader]:
+    transform: Callable[[Any], Any] = (
+        transforms.Compose(
             [
-                transforms.Resize(224),
+                transforms.Resize((224, 224)),
                 transforms.ToTensor(),
                 transforms.Normalize(
-                    (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
+                    mean=[0.4914, 0.4822, 0.4465], std=[0.2470, 0.2435, 0.2616]
                 ),
             ]
         )
-    else:
-        transform: transforms.Compose = transforms.Compose(
+        if vit_16_using
+        else transforms.Compose(
             [
                 transforms.ToTensor(),
                 transforms.Normalize(
-                    (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
+                    mean=[0.4914, 0.4822, 0.4465], std=[0.2470, 0.2435, 0.2616]
                 ),
             ]
         )
+    )
 
     trainset: datasets.CIFAR10 = datasets.CIFAR10(
         root="./data", train=True, download=True, transform=transform
     )
-    trainloader: DataLoader = DataLoader(
-        trainset, batch_size=batch_size, shuffle=True, num_workers=2
-    )  # train=True: Loads the training set of the CIFAR-10 dataset.
+    trainloader: DataLoader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
 
     testset: datasets.CIFAR10 = datasets.CIFAR10(
         root="./data", train=False, download=True, transform=transform
     )
     testloader: DataLoader = DataLoader(
-        testset, batch_size=100, shuffle=False, num_workers=2
+        testset, batch_size=batch_size * 2, shuffle=False
     )
 
     return trainloader, testloader
 
 
-def initialize_model(
-    model_name: str, device: torch.device, pretrained: bool = True
-) -> Module:
-    if model_name == "vgg16":
-        if pretrained:
-            model: Module = models.vgg16(weights=models.VGG16_Weights.DEFAULT)
-        else:
-            model: Module = models.vgg16(weights=None)
-    elif model_name == "resnet18":
-        if pretrained:
-            model: Module = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        else:
-            model: Module = models.resnet18(weights=None)
+def initialize_model(model_name: str, pretrain: bool) -> nn.Module:
+    weights: str
+    model: nn.Module
+    if model_name == "vit_b_16":
+        weights = ViT_B_16_Weights.IMAGENET1K_V1 if pretrain else None
+        model = vit_b_16(weights=weights)
+    elif model_name == "vgg16":
+        weights = VGG16_Weights.IMAGENET1K_V1 if pretrain else None
+        model = vgg16(weights=weights)
+    elif model_name == "resnet50":
+        weights = ResNet50_Weights.IMAGENET1K_V1 if pretrain else None
+        model = resnet50(weights=weights)
     elif model_name == "mobilenet_v3_large":
-        if pretrained:
-            model: Module = models.mobilenet_v3_large(
-                weights=models.MobileNet_V3_Large_Weights.DEFAULT
-            )
-        else:
-            model: Module = models.mobilenet_v3_large(weights=None)
-    elif model_name == "vit_b_16":
-        if pretrained:
-            model: Module = models.vit_b_16(
-                weights=models.ViT_B_16_Weights.IMAGENET1K_V1
-            )
-        else:
-            model: Module = models.vit_b_16(weights=None)
-        model.heads.head = nn.Linear(model.heads.head.in_features, 10)
+        weights = MobileNet_V3_Large_Weights.IMAGENET1K_V1 if pretrain else None
+        model = mobilenet_v3_large(weights=weights)
     else:
-        raise ValueError(f"Unsupported model name: {model_name}")
-
-    # Move the model to the specified device
-    model.to(device)
+        raise ValueError("Model not supported.")
 
     return model
 
 
-def build_dependency_graph(
-    model: Module, example_inputs: torch.Tensor
-) -> tp.DependencyGraph:
-    DG: tp.DependencyGraph = tp.DependencyGraph()
-    DG.build_dependency(model, example_inputs=example_inputs)
-    return DG
-
-
-def prune_model_with_depgraph(
-    DG: tp.DependencyGraph, model: Module, pruning_factor: float, device: torch.device
+def prune_model(
+    model: nn.Module,
+    example_inputs: torch.Tensor,
+    output_transform: Callable[[Any], Any],
+    model_name: str,
+    pruning_ratio: float = 0.5,
+    iterations: int = 1,
 ) -> None:
-    last_layer_name: str = "heads.head"
-    for name, module in model.named_modules():
-        if isinstance(module, nn.Conv2d) and name != last_layer_name:
-            prune_idxs = list(range(0, int(module.out_channels * pruning_factor)))
-            group = DG.get_pruning_group(
-                module, tp.prune_conv_out_channels, idxs=prune_idxs
-            )
-            if DG.check_pruning_group(group):
-                group.prune()
-        elif isinstance(module, nn.Linear) and name != last_layer_name:
-            prune_idxs = list(range(0, int(module.out_features * pruning_factor)))
-            group = DG.get_pruning_group(
-                module, tp.prune_linear_out_channels, idxs=prune_idxs
-            )
-            if DG.check_pruning_group(group):
-                group.prune()
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    ori_size: int = tp.utils.count_params(model)
+    model.to(device).eval()
+    example_inputs = example_inputs.to(device)
+    ignored_layers: List[nn.Module] = []
+    for p in model.parameters():
+        p.requires_grad_(True)  # Setting all parameters to be trainable
+    # Ignoring unprunable modules based on model type
+    for m in model.modules():
+        if isinstance(m, nn.Linear) and m.out_features == 1000:
+            ignored_layers.append(m)
+    channel_groups: Dict[nn.Module, int] = {}
+    if isinstance(model, VisionTransformer):
+        for m in model.modules():
+            if isinstance(m, nn.MultiheadAttention):
+                channel_groups[m] = m.num_heads
 
+    importance = tp.importance.MagnitudeImportance(p=1)
+    pruner = tp.pruner.MagnitudePruner(
+        model,
+        example_inputs=example_inputs,
+        importance=importance,
+        iterative_steps=iterations,
+        pruning_ratio=pruning_ratio,
+        global_pruning=True,
+        round_to=None,
+        ignored_layers=ignored_layers,
+        channel_groups=channel_groups,
+    )
+    print("==============Before pruning=================")
+    print("Model Name: {}".format(model_name))
 
-def train_and_prune(
-    model: Module,
-    trainloader: DataLoader,
-    criterion: CrossEntropyLoss,
-    optimizer: Optimizer,
-    device: torch.device,
-    iterative_steps: int,
-    pruning_factor_total: float,
-) -> None:
-    pruning_factor: float = 1 - np.power(1 - pruning_factor_total, 1 / iterative_steps)
-    print(f"Pruning Factor: {pruning_factor}")
-    sample_inputs: torch.Tensor
-    sample_inputs, _ = next(iter(trainloader))
-    sample_inputs = sample_inputs.to(device)
-    DG: tp.DependencyGraph = build_dependency_graph(model, sample_inputs)
-    for step in range(iterative_steps):
-        model.train()
-        inputs: torch.Tensor
-        targets: torch.Tensor
-        for inputs, targets in trainloader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss: torch.Tensor = criterion(outputs, targets)
-            loss.backward()
-            optimizer.step()
-        prune_model_with_depgraph(DG, model, pruning_factor, device)
-        macs, params = tp.utils.count_ops_and_params(model, inputs)
-        print(f"Step {step+1}: MACs = {macs}, Params = {params}")
-        sample_inputs: torch.Tensor
-        sample_inputs, _ = next(iter(trainloader))
-        sample_inputs = sample_inputs.to(device)
-        DG: tp.DependencyGraph = build_dependency_graph(model, sample_inputs)
-    print("Finished Training and Pruning the model")
+    layer_channel_cfg: Dict[nn.Module, int] = {}
+    for module in model.modules():
+        if module not in pruner.ignored_layers:
+            # print(module)
+            if isinstance(module, nn.Conv2d):
+                layer_channel_cfg[module] = module.out_channels
+            elif isinstance(module, nn.Linear):
+                layer_channel_cfg[module] = module.out_features
 
+    pruner.step()
+    if isinstance(
+        model, VisionTransformer
+    ):  # Torchvision relies on the hidden_dim variable for forwarding, so we have to modify this varaible after pruning
+        model.hidden_dim = model.conv_proj.out_channels
+        print(model.class_token.shape, model.encoder.pos_embedding.shape)
+    # Pruning process
 
-def fine_tune_model(
-    model: Module,
-    trainloader: DataLoader,
-    criterion: CrossEntropyLoss,
-    optimizer: Optimizer,
-    device: torch.device,
-    epochs: int = 5,
-) -> None:
-    for epoch in range(epochs):
-        model.train()
-        running_loss: float = 0.0
-        inputs: torch.Tensor
-        targets: torch.Tensor
-        for inputs, targets in trainloader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss: torch.Tensor = criterion(outputs, targets)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-        print(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss/len(trainloader):.4f}")
-    print("Finished Fine-tuning the model")
-
-
-def evaluate(model: Module, dataloader: DataLoader, device: torch.device) -> float:
-    model.eval()
-    correct: int = 0
-    total: int = 0
+    print("==============After pruning=================")
+    # Testing
     with torch.no_grad():
-        inputs: torch.Tensor
-        targets: torch.Tensor
-        for inputs, targets in dataloader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            outputs: torch.Tensor = model(inputs)
-            _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
-    return 100.0 * correct / total
+        if isinstance(example_inputs, dict):
+            out = model(**example_inputs)
+        else:
+            out = model(example_inputs)
+        if output_transform:
+            out = output_transform(out)
+        print("{} Pruning: ".format(model_name))
+        params_after_prune: int = tp.utils.count_params(model)
+        print("  Params: %s => %s" % (ori_size, params_after_prune))
+
+        if isinstance(out, (dict, list, tuple)):
+            print("  Output:")
+            for o in tp.utils.flatten_as_list(out):
+                print(o.shape)
+        else:
+            print("  Output:", out.shape)
+        print("------------------------------------------------------\n")
+    sys.stdout.flush()
 
 
-def model_saving(model: Module, model_name: str, pruning_factor: float) -> None:
-    # Create the base directory if it does not exist
+def model_saving(model: nn.Module, model_name: str, pruning_factor: float) -> None:
     base_dir: str = "model_variants"
     if not os.path.exists(base_dir):
         os.makedirs(base_dir)
         print(f"Created directory: {base_dir}")
-
-    # Create the model-specific directory if it does not exist
     model_dir: str = os.path.join(base_dir, model_name)
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
         print(f"Created directory: {model_dir}")
-
-    # Determine the filename based on the pruning factor
     if pruning_factor == 0:
         file_name: str = f"{model_name}_original.pth"
     else:
         file_name: str = f"{model_name}_pruned_{pruning_factor}.pth"
-
-    # Full path to save the model
     save_path: str = os.path.join(model_dir, file_name)
-
-    # Save the model
     try:
         torch.save(model.state_dict(), save_path)
         print(f"Model saved to: {save_path}")
@@ -226,40 +182,73 @@ def model_saving(model: Module, model_name: str, pruning_factor: float) -> None:
         print(f"Error saving the model: {e}")
 
 
-def main(model_name: str, pruning_factor: float, epochs: int, iterations: int):
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def train(
+    model: nn.Module,
+    trainloader: DataLoader,
+    criterion: nn.CrossEntropyLoss,
+    optimizer: optim.Optimizer,
+    epochs: int,
+) -> None:
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    model.train()
+    model.to(device)
+    for epoch in range(epochs):
+        for i, data in enumerate(trainloader, 0):
+            inputs: torch.Tensor
+            labels: torch.Tensor
+            inputs, labels = data
+            inputs, labels = inputs.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs: torch.Tensor
+            outputs = model(inputs)
+            loss: torch.Tensor = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+        # print statistics
+        print(f"Epoch: {epoch + 1}, Loss: {loss.item()}")
+    print("Finished Training")
+
+
+def test(model: nn.Module, testloader: DataLoader) -> None:
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    model.eval()
+    model.to(device)
+    correct: int = 0
+    total: int = 0
+    with torch.no_grad():
+        data: Tuple[torch.Tensor, torch.Tensor]
+        for data in testloader:
+            images: torch.Tensor
+            labels: torch.Tensor
+            images, labels = data
+            images, labels = images.to(device), labels.to(device)
+            outputs: torch.Tensor = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    print(f"Accuracy of the network on the test images: {100 * correct / total}%")
+
+
+def main(model_name: str, pruning_ratio: float, epochs: int, iterations: int):
     trainloader: DataLoader
     testloader: DataLoader
-    trainloader, testloader = load_data(
-        batch_size=128, vit_16_using="vit" in model_name
-    )
-    model: Module = initialize_model(model_name, device)
-    criterion: CrossEntropyLoss = CrossEntropyLoss()
-    if "ViT" in model_name:
-        optimizer: Optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
-    else:
-        optimizer: Optimizer = torch.optim.SGD(
-            model.parameters(), lr=0.001, momentum=0.9
-        )
+    trainloader, testloader = load_data(128, "vit" in model_name)
+    model = initialize_model(model_name, True)
+    # randomly sample one as the example input
+    example_inputs: torch.Tensor
+    example_inputs, _ = next(iter(trainloader))
     if not np.isclose(pruning_factor, 0):
-        train_and_prune(
-            model,
-            trainloader,
-            criterion,
-            optimizer,
-            device,
-            iterative_steps=iterations,
-            pruning_factor_total=pruning_factor,
-        )
-    fine_tune_model(model, trainloader, criterion, optimizer, device, epochs=epochs)
-    accuracy: float = evaluate(model, testloader, device)
-    print(
-        f"Pruned Model Accuracy for {model_name} with pruning factor {pruning_factor}: {accuracy}%"
-    )
-    model_saving(model, model_name, pruning_factor)
-    del model
-    torch.cuda.empty_cache()
-    sys.stdout.flush()
+        prune_model(model, example_inputs, None, model_name, pruning_ratio, iterations)
+    criterion: nn.CrossEntropyLoss = nn.CrossEntropyLoss()
+    optimizer: optim.Optimizer
+    if isinstance(model, VisionTransformer):
+        optimizer = optim.AdamW(model.parameters(), lr=0.001)
+    else:
+        optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    train(model, trainloader, criterion, optimizer, epochs)
+    test(model, testloader)
+    model_saving(model, model_name, pruning_ratio)
 
 
 if __name__ == "__main__":
@@ -273,3 +262,4 @@ if __name__ == "__main__":
     epochs: int = int(args[3])
     iterations: int = int(args[4])
     main(model_name, pruning_factor, epochs, iterations)
+    sys.stdout.flush()
