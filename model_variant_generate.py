@@ -175,7 +175,7 @@ def model_saving(model: nn.Module, model_name: str, pruning_factor: float) -> No
         file_name: str = f"{model_name}_pruned_{pruning_factor}.pth"
     save_path: str = os.path.join(model_dir, file_name)
     try:
-        torch.save(model.state_dict(), save_path)
+        torch.save(model, save_path)
         print(f"Model saved to: {save_path}")
     except Exception as e:
         print(f"Error saving the model: {e}")
@@ -233,10 +233,12 @@ def test(model: nn.Module, testloader: DataLoader) -> None:
     torch.cuda.empty_cache()
 
 
-def main(model_name: str, pruning_ratio: float, epochs: int, iterations: int):
+def main(
+    model_name: str, pruning_ratio: float, epochs: int, iterations: int, batch_size: int
+) -> None:
     trainloader: DataLoader
     testloader: DataLoader
-    trainloader, testloader = load_data(128, "vit" in model_name)
+    trainloader, testloader = load_data(batch_size, "vit" in model_name)
     model = initialize_model(model_name, True)
     # randomly sample one as the example input
     example_inputs: torch.Tensor
@@ -256,7 +258,7 @@ def main(model_name: str, pruning_ratio: float, epochs: int, iterations: int):
 
 if __name__ == "__main__":
     args: List[str] = sys.argv
-    if len(args) != 5:
+    if len(args) != 6:
         raise ValueError(
             "Please provide the model name, pruning factor, epochs, and iterations."
         )
@@ -264,5 +266,6 @@ if __name__ == "__main__":
     pruning_factor: float = float(args[2])
     epochs: int = int(args[3])
     iterations: int = int(args[4])
-    main(model_name, pruning_factor, epochs, iterations)
+    batch_size: int = int(args[5])
+    main(model_name, pruning_factor, epochs, iterations, batch_size)
     sys.stdout.flush()

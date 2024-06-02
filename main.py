@@ -5,7 +5,10 @@ from typing import List, Tuple
 from typing import Iterator
 
 epochs: int = 1
+transformer_epochs: int = 0
 iterations_in_pruning: int = 1
+batch_size: int = 256
+transformer_batch_size: int = 64
 models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
 model_gen_script: str = "model_variant_generate.py"
 
@@ -52,7 +55,16 @@ if __name__ == "__main__":
     pruning_ratio: float
     for model_name in models_name:
         call_generate_model(
-            model_gen_script, model_name, "0.0", str(epochs), str(iterations_in_pruning)
+            model_gen_script,
+            model_name,
+            "0.0",
+            str(epochs) if "vit" not in model_name else str(transformer_epochs),
+            str(iterations_in_pruning),
+            (
+                str(batch_size)
+                if "vit" not in model_name
+                else str(transformer_batch_size)
+            ),
         )
         for pruning_ratio in pruning_factors:
             print(f"Pruning Factor: {pruning_ratio}")
@@ -60,6 +72,15 @@ if __name__ == "__main__":
                 model_gen_script,
                 model_name,
                 str(pruning_ratio),
-                str(round(epochs * (1 + pruning_ratio))),
+                (
+                    str(round(epochs * (1 + pruning_ratio)))
+                    if "vit" not in model_name
+                    else str(round(transformer_epochs * (1 + pruning_ratio)))
+                ),
                 str(iterations_in_pruning),
+                (
+                    str(batch_size)
+                    if "vit" not in model_name
+                    else str(transformer_batch_size)
+                ),
             )

@@ -14,6 +14,7 @@ import json
 from typing import Any, Dict
 import csv
 
+base_directory: str = os.path.join(os.getcwd(), "model_variants")
 models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
 test_batch_size: int = 256
 
@@ -98,16 +99,13 @@ def save_to_csv(
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         for model_name, infos in all_model_infos.items():
-            info: Dict[str, Any] = infos[0]
-            if info is not None:
-                writer.writerow(info)
-            else:
-                print(f"No information found for model: {model_name}")
+            info: Dict[str, Any]
+            for info in infos:
+                if info:
+                    writer.writerow(info)
 
 
 if __name__ == "__main__":
-
-    base_directory: str = os.path.join(os.getcwd(), "model_variants")
 
     all_model_infos: Dict[str, List[Dict[str, Any]]] = {}
     model_name: str
@@ -117,10 +115,9 @@ if __name__ == "__main__":
             test_batch_size, directory, model_name
         )
         all_model_infos[model_name] = model_infos
-output_file: str = "model_information.csv"
-save_to_csv(all_model_infos, output_file)
-
-for model_name, infos in all_model_infos.items():
-    print(f"Model: {model_name}")
-    for idx, info in enumerate(infos):
-        print(f"Model {idx + 1} info: {info}")
+    output_file: str = "model_information.csv"
+    save_to_csv(all_model_infos, output_file)
+    for model_name, infos in all_model_infos.items():
+        print(f"Model: {model_name}")
+        for idx, info in enumerate(infos):
+            print(f"Model {idx + 1} info: {info}")

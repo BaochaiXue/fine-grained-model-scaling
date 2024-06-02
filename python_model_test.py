@@ -3,63 +3,91 @@ from typing import Tuple, List
 import numpy as np
 import torch
 import torch.nn as nn
-import torchvision
-from torch.nn import Module
-from torch.optim import Optimizer
-from torch_pruning import DependencyGraph
-from torchvision import datasets, transforms, models
+from typing import Any, Dict
 from torch.utils.data import DataLoader
 import time
 import sys
 from model_variant_generate import initialize_model, load_data
 from torchvision.models import VisionTransformer
+import json
 
 
 class CandidateModel:
-    def __init__(self, model: Module, size: int, prune_rate: float, name: str):
-        self.model = model
-        self.size = size
-        self.prune_rate = prune_rate
-        self.name = name
 
+    def __init__(self, model_path: str, model_name: str) -> None:
+        self.model: nn.Module = torch.load(model_path)
+        self.size: int = os.path.getsize(model_path)
+        self.name: str = model_name
+        self.prune_rate: float = (
+            0.0
+            if "original" in model_path
+            else float(model_path.split("_")[-1].split(".pt")[0])
+        )
+        self.accuracy: float = None
+        self.inference_time: float = None
 
-def model_read(path: str, model_name: str, device: torch.device) -> CandidateModel:
-    model_state_dict: torch.load = torch.load(path)
-    model: Module = initialize_model(model_name, False)
-    model.load_state_dict(model_state_dict)
-    # the size of model in bytes
-    size: int = os.path.getsize(path)
-    if "original" in path:
-        prune_rate: float = 0.0
-    else:
-        prune_rate: float = float(path.split("_")[-1].split(".")[0])
-    return CandidateModel(model, size, prune_rate, model_name)
+    def __repr__(self) -> str:
+        return f"Model: {self.name}, Prune Rate: {self.prune_rate}, Accuracy: {self.accuracy:.2f}%, Inference Time: {self.inference_time:.4f} seconds, Model Size: {self.size} bytes"
 
+    def __str__(self) -> str:
+        return self.__repr__()
 
-def evaluate_and_measure_time(
-    model: nn.Module, dataloader: DataLoader, device: torch.device
-) -> Tuple[float, float]:
-    model.eval()
-    correct: int = 0
-    total: int = 0
-    start_time: float = time.time()
+    def __lt__(self, other: "CandidateModel") -> bool:
+        return self.size < other.size
 
-    with torch.no_grad():
-        inputs: torch.Tensor
-        targets: torch.Tensor
-        for inputs, targets in dataloader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            outputs: torch.Tensor = model(inputs)
-            _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
+    def __eq__(self, other: "CandidateModel") -> bool:
+        return self.size == other.size
 
-    end_time: float = time.time()
-    inference_time: float = end_time - start_time
-    accuracy: float = 100.0 * correct / total
-    # clean up
-    torch.cuda.empty_cache()
-    return accuracy, inference_time
+    def __gt__(self, other: "CandidateModel") -> bool:
+        return self.size > other.size
+
+    def __le__(self, other: "CandidateModel") -> bool:
+        return self.size <= other.size
+
+    def __ge__(self, other: "CandidateModel") -> bool:
+        return self.size >= other.size
+
+    def __ne__(self, other: "CandidateModel") -> bool:
+        return self.size != other.size
+
+    def evaluate(
+        self, dataloader: DataLoader, device: torch.device
+    ) -> Tuple[float, float]:
+        self.model.to(device)
+        self.model.eval()
+        correct: int = 0
+        total: int = 0
+        start_time: float = time.time()
+        with torch.no_grad():
+            inputs: torch.Tensor
+            targets: torch.Tensor
+            for inputs, targets in dataloader:
+                inputs, targets = inputs.to(device), targets.to(device)
+                outputs: torch.Tensor = self.model(inputs)
+                _, predicted = outputs.max(1)
+                total += targets.size(0)
+                correct += predicted.eq(targets).sum().item()
+        end_time: float = time.time()
+        inference_time: float = end_time - start_time
+        accuracy: float = 100.0 * correct / total
+        # clean up
+        torch.cuda.empty_cache()
+        self.accuracy = accuracy
+        self.inference_time = inference_time
+        return accuracy, inference_time
+
+    def save_info_to_json(self, file_path: str = "model_info.json") -> None:
+        model_info: Dict[str, Any] = {
+            "model": self.name,
+            "prune_rate": self.prune_rate,
+            "accuracy": self.accuracy,
+            "inference_time": self.inference_time,
+            "model_size": self.size,
+        }
+        if not os.path.exists("model_info.json"):
+            os.makedirs("model_info.json", exist_ok=True)
+        with open(file_path, "w") as f:
+            json.dump(model_info, f, indent=4)
 
 
 def main() -> None:
@@ -72,26 +100,12 @@ def main() -> None:
     batch_size: int = int(args[1])
     path: str = args[2]
     model_name: str = args[3]
-    candidateModel: CandidateModel = model_read(path, model_name, device)
-    model: Module = candidateModel.model
-    model.to(device)
+    candidateModel: CandidateModel = CandidateModel(path, model_name)
     testloader: DataLoader
-    _, testloader = load_data(batch_size, isinstance(model, VisionTransformer))
-    accuracy: float
-    inference_time: float
-    accuracy, inference_time = evaluate_and_measure_time(model, testloader, device)
-    # decribe the model, from the model name and prune rate
-    print(f"Model: {candidateModel.name}, Prune Rate: {candidateModel.prune_rate}")
-    print(f"Accuracy: {accuracy:.2f}%")
-    print(f"Inference Time: {inference_time:.4f} seconds")
-    print(f"Model Size: {candidateModel.size} bytes")
-    # print this information to the json file
-    if not os.path.exists("model_info.json"):
-        os.makedirs("model_info.json", exist_ok=True)
-    with open("model_info.json", "w") as f:
-        f.write(
-            f'{{"model": "{candidateModel.name}", "prune_rate": {candidateModel.prune_rate}, "accuracy": {accuracy}, "inference_time": {inference_time}, "model_size": {candidateModel.size}}}'
-        )
+    _, testloader = load_data(batch_size, "vit" in candidateModel.name)
+    candidateModel.evaluate(testloader, device)
+    print(candidateModel)
+    candidateModel.save_info_to_json()
 
 
 if __name__ == "__main__":
