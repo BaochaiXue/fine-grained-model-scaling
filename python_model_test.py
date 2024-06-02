@@ -36,10 +36,14 @@ def model_read(path: str, model_name: str, device: torch.device) -> CandidateMod
     return CandidateModel(model, size, prune_rate, model_name)
 
 
-def evaluate(model: nn.Module, dataloader: DataLoader, device: torch.device) -> float:
+def evaluate_and_measure_time(
+    model: nn.Module, dataloader: DataLoader, device: torch.device
+) -> Tuple[float, float]:
     model.eval()
     correct: int = 0
     total: int = 0
+    start_time: float = time.time()
+
     with torch.no_grad():
         inputs: torch.Tensor
         targets: torch.Tensor
@@ -49,22 +53,13 @@ def evaluate(model: nn.Module, dataloader: DataLoader, device: torch.device) -> 
             _, predicted = outputs.max(1)
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
-    return 100.0 * correct / total
 
-
-def measure_inference_time(
-    model: nn.Module, dataloader: DataLoader, device: torch.device
-) -> float:
-    model.eval()
-    start_time: float = time.time()
-    inputs: torch.Tensor
-    with torch.no_grad():
-        for inputs, _ in dataloader:
-            inputs = inputs.to(device)
-            _ = model(inputs)
     end_time: float = time.time()
     inference_time: float = end_time - start_time
-    return inference_time
+    accuracy: float = 100.0 * correct / total
+    # clean up
+    torch.cuda.empty_cache()
+    return accuracy, inference_time
 
 
 def main() -> None:
@@ -82,16 +77,17 @@ def main() -> None:
     model.to(device)
     testloader: DataLoader
     _, testloader = load_data(batch_size, isinstance(model, VisionTransformer))
-    accuracy: float = evaluate(model, testloader, device)
-    inference_time: float = measure_inference_time(model, testloader, device)
+    accuracy: float
+    inference_time: float
+    accuracy, inference_time = evaluate_and_measure_time(model, testloader, device)
     # decribe the model, from the model name and prune rate
     print(f"Model: {candidateModel.name}, Prune Rate: {candidateModel.prune_rate}")
     print(f"Accuracy: {accuracy:.2f}%")
     print(f"Inference Time: {inference_time:.4f} seconds")
     print(f"Model Size: {candidateModel.size} bytes")
     # print this information to the json file
-    # ensure the file is created
-    os.makedirs("model_info.json", exist_ok=True)
+    if not os.path.exists("model_info.json"):
+        os.makedirs("model_info.json", exist_ok=True)
     with open("model_info.json", "w") as f:
         f.write(
             f'{{"model": "{candidateModel.name}", "prune_rate": {candidateModel.prune_rate}, "accuracy": {accuracy}, "inference_time": {inference_time}, "model_size": {candidateModel.size}}}'
