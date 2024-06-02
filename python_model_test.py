@@ -11,26 +11,8 @@ from torchvision import datasets, transforms, models
 from torch.utils.data import DataLoader
 import time
 import sys
-from model_variant_generate import initialize_model
-
-
-def load_data(batch_size: int) -> DataLoader:
-    transform: transforms.Compose = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ]
-    )
-
-    testset: datasets.CIFAR10 = datasets.CIFAR10(
-        root="./data", train=False, download=True, transform=transform
-    )
-    # load fixed testset
-    testloader: DataLoader = DataLoader(
-        testset, batch_size=batch_size, shuffle=False, num_workers=2
-    )
-
-    return testloader
+from model_variant_generate import initialize_model, load_data
+from torchvision.models import VisionTransformer
 
 
 class CandidateModel:
@@ -43,7 +25,7 @@ class CandidateModel:
 
 def model_read(path: str, model_name: str, device: torch.device) -> CandidateModel:
     model_state_dict: torch.load = torch.load(path)
-    model: Module = initialize_model(model_name, device, pretrained=False)
+    model: Module = initialize_model(model_name, False)
     model.load_state_dict(model_state_dict)
     # the size of model in bytes
     size: int = os.path.getsize(path)
@@ -88,13 +70,18 @@ def measure_inference_time(
 def main() -> None:
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args: List[str] = sys.argv
+    if len(args) != 4:
+        raise ValueError(
+            "Please provide the model name, pruning factor, epochs, and iterations."
+        )
     batch_size: int = int(args[1])
     path: str = args[2]
     model_name: str = args[3]
-    testloader: DataLoader = load_data(batch_size)
     candidateModel: CandidateModel = model_read(path, model_name, device)
     model: Module = candidateModel.model
     model.to(device)
+    testloader: DataLoader
+    _, testloader = load_data(batch_size, isinstance(model, VisionTransformer))
     accuracy: float = evaluate(model, testloader, device)
     inference_time: float = measure_inference_time(model, testloader, device)
     # decribe the model, from the model name and prune rate
@@ -103,7 +90,13 @@ def main() -> None:
     print(f"Inference Time: {inference_time:.4f} seconds")
     print(f"Model Size: {candidateModel.size} bytes")
     # print this information to the json file
+    # ensure the file is created
+    os.makedirs("model_info.json", exist_ok=True)
     with open("model_info.json", "w") as f:
         f.write(
             f'{{"model": "{candidateModel.name}", "prune_rate": {candidateModel.prune_rate}, "accuracy": {accuracy}, "inference_time": {inference_time}, "model_size": {candidateModel.size}}}'
         )
+
+
+if __name__ == "__main__":
+    main()

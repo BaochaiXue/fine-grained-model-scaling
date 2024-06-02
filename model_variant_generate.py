@@ -1,8 +1,6 @@
 import os
 import sys
 from typing import Any, Dict, Tuple, Callable, List
-import argparse
-
 import torch
 import torch.nn as nn
 import torch_pruning as tp
@@ -64,16 +62,16 @@ def initialize_model(model_name: str, pretrain: bool) -> nn.Module:
     weights: str
     model: nn.Module
     if model_name == "vit_b_16":
-        weights = ViT_B_16_Weights.IMAGENET1K_V1 if pretrain else None
+        weights = ViT_B_16_Weights.DEFAULT if pretrain else None
         model = vit_b_16(weights=weights)
     elif model_name == "vgg16":
-        weights = VGG16_Weights.IMAGENET1K_V1 if pretrain else None
+        weights = VGG16_Weights.DEFAULT if pretrain else None
         model = vgg16(weights=weights)
     elif model_name == "resnet50":
-        weights = ResNet50_Weights.IMAGENET1K_V1 if pretrain else None
+        weights = ResNet50_Weights.DEFAULT if pretrain else None
         model = resnet50(weights=weights)
     elif model_name == "mobilenet_v3_large":
-        weights = MobileNet_V3_Large_Weights.IMAGENET1K_V1 if pretrain else None
+        weights = MobileNet_V3_Large_Weights.DEFAULT if pretrain else None
         model = mobilenet_v3_large(weights=weights)
     else:
         raise ValueError("Model not supported.")
@@ -159,6 +157,7 @@ def prune_model(
             print("  Output:", out.shape)
         print("------------------------------------------------------\n")
     sys.stdout.flush()
+    torch.cuda.empty_cache()
 
 
 def model_saving(model: nn.Module, model_name: str, pruning_factor: float) -> None:
@@ -207,6 +206,8 @@ def train(
         # print statistics
         print(f"Epoch: {epoch + 1}, Loss: {loss.item()}")
     print("Finished Training")
+    # clean up
+    torch.cuda.empty_cache()
 
 
 def test(model: nn.Module, testloader: DataLoader) -> None:
@@ -228,6 +229,8 @@ def test(model: nn.Module, testloader: DataLoader) -> None:
             correct += (predicted == labels).sum().item()
 
     print(f"Accuracy of the network on the test images: {100 * correct / total}%")
+    # clean up
+    torch.cuda.empty_cache()
 
 
 def main(model_name: str, pruning_ratio: float, epochs: int, iterations: int):

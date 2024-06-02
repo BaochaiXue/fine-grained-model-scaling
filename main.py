@@ -5,8 +5,8 @@ from typing import List, Tuple
 from typing import Iterator
 
 epochs: int = 1
-iterations_in_pruning: int = 10
-models_name: List[str] = ["vgg16", "resnet50", "mobilenet_v3_large", "vit_b_16"]
+iterations_in_pruning: int = 1
+models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
 model_gen_script: str = "model_variant_generate.py"
 
 
@@ -49,17 +49,17 @@ def call_generate_model(path: str, *args) -> None:
 
 if __name__ == "__main__":
     model_name: str
-    pruning_factor: float
+    pruning_ratio: float
     for model_name in models_name:
         call_generate_model(
             model_gen_script, model_name, "0.0", str(epochs), str(iterations_in_pruning)
         )
-        for pruning_factor in pruning_factors:
-            print(f"Pruning Factor: {pruning_factor}")
+        for pruning_ratio in pruning_factors:
+            print(f"Pruning Factor: {pruning_ratio}")
             call_generate_model(
                 model_gen_script,
                 model_name,
-                str(pruning_factor),
-                str(epochs),
+                str(pruning_ratio),
+                str(round(epochs * (1 + pruning_ratio))),
                 str(iterations_in_pruning),
             )

@@ -2,3 +2,6 @@ data
 draft.ipynb
 reference_paper
 model_variants
+model_information.csv
+model_info.json
+__pycache__
