@@ -26,3 +26,9 @@ This toolkit comprises several scripts designed to facilitate the selection, tes
 - **Usage:** Run this script to execute the entire optimization process in a step-by-step manner.
 
 
+### 5. Acknowledgements
+The development of this toolkit would not have been possible without the invaluable resources and support from the open-source community. We would like to extend our deepest gratitude to the contributors of the Torch-Pruning library. Their dedication and expertise have provided essential tools and documentation that have significantly enhanced the capabilities of our model optimization processes.
+
+Torch-Pruning has enabled us to implement sophisticated pruning techniques that are critical for generating efficient model variants. The comprehensive documentation and robust functionalities of Torch-Pruning have been instrumental in achieving our goals of optimizing machine learning models within constrained environments. We would also like to acknowledge the broader PyTorch community for their continuous efforts in developing and maintaining an excellent deep learning framework. Their collective work has created a solid foundation upon which we could build and extend our toolkit.
+
+To the researchers, developers, and maintainers of these invaluable resources, we express our sincere appreciation. Your contributions have been pivotal in advancing our work and the field of model optimization.
