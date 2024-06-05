@@ -253,7 +253,7 @@ def main(
         optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     train(model, trainloader, criterion, optimizer, epochs)
     test(model, testloader)
-    model_saving(model, model_name, pruning_ratio)
+    model_saving(model, model_name, pruning_ratio / iterations)
 
 
 if __name__ == "__main__":

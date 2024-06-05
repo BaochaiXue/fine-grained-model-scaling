@@ -71,7 +71,7 @@ if __name__ == "__main__":
             call_generate_model(
                 model_gen_script,
                 model_name,
-                str(pruning_ratio),
+                str(pruning_ratio * iterations_in_pruning),
                 (
                     str(round(epochs * (1 + pruning_ratio)))
                     if "vit" not in model_name
