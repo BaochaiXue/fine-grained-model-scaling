@@ -84,8 +84,11 @@ class CandidateModel:
             "inference_time": self.inference_time,
             "model_size": self.size,
         }
-        if not os.path.exists("model_info.json"):
-            os.makedirs("model_info.json", exist_ok=True)
+        dir_name: str = os.path.dirname(file_path)
+        if dir_name and not os.path.exists(dir_name):
+            os.makedirs(dir_name, exist_ok=True)
+
+        # Save the model information to the JSON file
         with open(file_path, "w") as f:
             json.dump(model_info, f, indent=4)
 
