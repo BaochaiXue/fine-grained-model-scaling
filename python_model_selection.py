@@ -12,6 +12,7 @@ import math
 from deap import base, creator, tools, algorithms
 import os
 import shutil
+import argparse
 
 creator.create(
     "FitnessMulti", base.Fitness, weights=(-1.0, 1000.0, 1.0)
@@ -109,7 +110,7 @@ def copy_model(model_name: str, pruning_factor: float, selected_dir: str) -> Non
         print(f"Error copying the model: {e}")
 
 
-def main() -> None:
+def main(S: float, K: int) -> None:
     model_info: pd.DataFrame = pd.read_csv("model_information.csv")
     model_info.set_index(["model", "prune_rate"], inplace=True)
     model_info.sort_values(by=["model", "inference_time"], inplace=True)
@@ -146,4 +147,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(
+        description="Run model selection process."
+    )
+    parser.add_argument("--S", type=float, required=True, help="Storage constraint")
+    parser.add_argument(
+        "--K", type=int, required=True, help="Number of models to select"
+    )
+    args: argparse.Namespace = parser.parse_args()
+    main(S=args.S, K=args.K)

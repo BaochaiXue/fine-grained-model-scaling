@@ -105,6 +105,26 @@ def save_to_csv(
                     writer.writerow(info)
 
 
+def run_model_selection_script(S: float, K: int) -> None:
+    try:
+        # Call the python_model_selection.py script with arguments
+        result: subprocess.CompletedProcess = subprocess.run(
+            ["python", "python_model_selection.py", "--S", str(S), "--K", str(K)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        # Print the output from the script
+        print("Script Output:")
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        # Print the error if the script fails
+        print("An error occurred while running the script:")
+        print(e.stderr)
+
+
 if __name__ == "__main__":
 
     all_model_infos: Dict[str, List[Dict[str, Any]]] = {}
@@ -121,3 +141,6 @@ if __name__ == "__main__":
         print(f"Model: {model_name}")
         for idx, info in enumerate(infos):
             print(f"Model {idx + 1} info: {info}")
+    S: float = 1000.0
+    K: int = 5
+    run_model_selection_script(S, K)
