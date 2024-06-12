@@ -13,6 +13,7 @@ import subprocess
 import json
 from typing import Any, Dict
 import csv
+import sys
 
 base_directory: str = os.path.join(os.getcwd(), "model_variants")
 models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
@@ -125,22 +126,33 @@ def run_model_selection_script(S: float, K: int) -> None:
         print(e.stderr)
 
 
-if __name__ == "__main__":
+def main(S: float, K: int):
+    base_directory: str = os.path.join(os.getcwd(), "model_variants")
+    models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
+    test_batch_size: int = 64
 
     all_model_infos: Dict[str, List[Dict[str, Any]]] = {}
-    model_name: str
     for model_name in models_name:
-        directory: str = os.path.join(base_directory, model_name)
-        model_infos: List[Dict[str, Any]] = run_model_test(
-            test_batch_size, directory, model_name
-        )
+        directory = os.path.join(base_directory, model_name)
+        model_infos = run_model_test(test_batch_size, directory, model_name)
         all_model_infos[model_name] = model_infos
-    output_file: str = "model_information.csv"
+
+    output_file = "model_information.csv"
     save_to_csv(all_model_infos, output_file)
+
     for model_name, infos in all_model_infos.items():
         print(f"Model: {model_name}")
         for idx, info in enumerate(infos):
             print(f"Model {idx + 1} info: {info}")
-    S: float = 1000.0
-    K: int = 5
+
     run_model_selection_script(S, K)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python storage_bound_model_selection.py <S> <K>")
+        sys.exit(1)
+
+    S: float = float(sys.argv[1])
+    K: int = int(sys.argv[2])
+    main(S, K)

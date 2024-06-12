@@ -11,6 +11,8 @@ batch_size: int = 256
 transformer_batch_size: int = 64
 models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
 model_gen_script: str = "model_variant_generate.py"
+S: float = 1000
+K: int = 5
 
 
 def float_range(start: float, end: float, step: float) -> Iterator[float]:
@@ -50,6 +52,23 @@ def call_generate_model(path: str, *args) -> None:
         print(f"An unexpected error occurred: {str(e)}")
 
 
+def call_storage_bound_model_selection(S: float, K: int) -> None:
+    try:
+        # Call the storage_bound_model_selection.py script with S and K as arguments
+        result = subprocess.run(
+            ["python", "storage_bound_model_selection.py", str(S), str(K)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        print("Subprocess Output:")
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        print("An error occurred while running the script:")
+        print(e.stderr)
+
+
 if __name__ == "__main__":
     model_name: str
     pruning_ratio: float
@@ -84,3 +103,5 @@ if __name__ == "__main__":
                     else str(transformer_batch_size)
                 ),
             )
+    call_storage_bound_model_selection(S, K)
+    print("Model selection process completed.")

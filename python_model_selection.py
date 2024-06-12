@@ -15,35 +15,38 @@ import shutil
 import argparse
 
 creator.create(
-    "FitnessMulti", base.Fitness, weights=(-1.0, 1000.0, 1.0)
+    "FitnessMulti", base.Fitness, weights=(-1.0, 20000.0, 2000.0)
 )  # Minimize storage, maximize inference time difference and accuracy
 creator.create("Individual", list, fitness=creator.FitnessMulti)
 
 
-def evaluate(
-    individual: List[int], models_df: pd.DataFrame
-) -> Tuple[float, float, float]:
-    selected_models: pd.DataFrame = models_df.iloc[individual]
-    total_storage: float = selected_models["model_size"].sum()
-    min_inference_diff: float = np.min(
-        np.diff(sorted(selected_models["inference_time"]))
-    )
-    accuracy_sum: float = selected_models["accuracy"].sum()
-
-    # Penalize duplicates by reducing the fitness score
-    if len(set(individual)) != len(individual):
-        total_storage *= 10000  # Arbitrary large penalty
-
-    return total_storage, min_inference_diff, accuracy_sum
-
-
-def feasible(individual: List[int], models_df: pd.DataFrame, S: float) -> bool:
-    selected_models: pd.DataFrame = models_df.iloc[individual]
-    total_storage: float = selected_models["model_size"].sum()
-    return total_storage <= S
-
-
 def select_models(group: pd.DataFrame, K: int, S: float) -> pd.DataFrame:
+    def evaluate(
+        individual: List[int], models_df: pd.DataFrame
+    ) -> Tuple[float, float, float]:
+        selected_models: pd.DataFrame = models_df.iloc[individual]
+        total_storage: float = selected_models["model_size"].sum()
+        min_inference_diff: float = np.min(
+            np.diff(sorted(selected_models["inference_time"]))
+        )
+        accuracy_sum: float = selected_models["accuracy"].sum()
+        # penalize for every model that has not an accuracy of at least 0.5
+        for i in range(K):
+            if selected_models.iloc[i]["accuracy"] < 0.5:
+                accuracy_sum *= selected_models.iloc[i]["accuracy"]
+        # bonus for inference time difference
+        max_inference_diff: float = np.max(
+            np.diff(sorted(selected_models["inference_time"]))
+        )
+        diff_ratio: float = min_inference_diff / max_inference_diff
+        min_inference_diff *= 1 + diff_ratio
+        return total_storage, min_inference_diff, accuracy_sum
+
+    def feasible(individual: List[int], models_df: pd.DataFrame, S: float) -> bool:
+        selected_models: pd.DataFrame = models_df.iloc[individual]
+        total_storage: float = selected_models["model_size"].sum()
+        return total_storage <= S and len(set(individual)) == len(individual)
+
     toolbox: base.Toolbox = base.Toolbox()
     toolbox.register("indices", random.sample, range(len(group)), K)
 
@@ -59,18 +62,21 @@ def select_models(group: pd.DataFrame, K: int, S: float) -> pd.DataFrame:
     # Define the constraint
     feasibility_func = lambda ind: feasible(ind, group, S)
     toolbox.decorate(
-        "evaluate", tools.DeltaPenalty(feasibility_func, (float("inf"), 0.0, 0.0))
+        "evaluate",
+        tools.DeltaPenalty(
+            feasibility_func, (float("inf"), -float("inf"), -float("inf"))
+        ),
     )
 
     population: List[creator.Individual] = toolbox.population(n=1000)
     algorithms.eaMuPlusLambda(
         population,
         toolbox,
-        mu=100,
-        lambda_=200,
+        mu=1000,
+        lambda_=2000,
         cxpb=0.7,
         mutpb=0.3,
-        ngen=100,
+        ngen=1000,
         verbose=False,
     )
     ind: creator.Individual
@@ -84,24 +90,25 @@ def select_models(group: pd.DataFrame, K: int, S: float) -> pd.DataFrame:
 
 def copy_model(model_name: str, pruning_factor: float, selected_dir: str) -> None:
     base_dir: str = "model_variants"
-
     model_dir: str = os.path.join(base_dir, model_name)
+
     if pruning_factor == 0:
         file_name: str = f"{model_name}_original.pth"
     else:
         file_name: str = f"{model_name}_pruned_{pruning_factor}.pth"
 
     source_path: str = os.path.join(model_dir, file_name)
-    selected_save_path: str = os.path.join(selected_dir, file_name)
+    target_model_dir: str = os.path.join(selected_dir, model_name)
+    selected_save_path: str = os.path.join(target_model_dir, file_name)
 
     try:
         if not os.path.exists(source_path):
             print(f"Source model does not exist: {source_path}")
             return
 
-        if not os.path.exists(selected_dir):
-            os.makedirs(selected_dir)
-            print(f"Created directory: {selected_dir}")
+        if not os.path.exists(target_model_dir):
+            os.makedirs(target_model_dir)
+            print(f"Created directory: {target_model_dir}")
 
         shutil.copyfile(source_path, selected_save_path)
         print(f"Model copied to: {selected_save_path}")
@@ -119,13 +126,9 @@ def main(S: float, K: int) -> None:
         tuple(model_info.groupby("model"))
     )
 
-    K: int = 5  # Number of models to select
-    S: float = 1000.0
-
     selected_models_list: List[pd.DataFrame] = []
 
     for model, group in model_groups.items():
-        # inference time epsilon is max difference in inference time
         selected_models: pd.DataFrame = select_models(
             group,
             K,
@@ -133,7 +136,6 @@ def main(S: float, K: int) -> None:
         )
         selected_models_list.append(selected_models)
 
-    # Concatenate all selected models from different groups
     all_selected_models: pd.DataFrame = pd.concat(selected_models_list)
 
     print("Selected Models:")
