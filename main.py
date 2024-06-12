@@ -4,9 +4,9 @@ import os
 from typing import List, Tuple
 from typing import Iterator
 
-epochs: int = 1
-transformer_epochs: int = 0
-iterations_in_pruning: int = 1
+epochs: int = 100
+transformer_epochs: int = 20
+iterations_in_pruning: int = 20
 batch_size: int = 256
 transformer_batch_size: int = 64
 models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
