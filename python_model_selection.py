@@ -14,7 +14,9 @@ import os
 import shutil
 import argparse
 
-creator.create("FitnessMulti", base.Fitness, weights=(1.0, 1.0, -1.0))
+creator.create(
+    "FitnessMulti", base.Fitness, weights=(1.0, 1.0, -1.0)
+)  # Minimize the third value
 creator.create("Individual", list, fitness=creator.FitnessMulti)
 
 
