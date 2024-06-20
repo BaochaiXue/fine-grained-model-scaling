@@ -17,7 +17,7 @@ import sys
 
 base_directory: str = os.path.join(os.getcwd(), "model_variants")
 models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
-test_batch_size: int = 64
+test_batch_size: int = 1
 
 
 def find_model_files(directory: str, extension: str = ".pth") -> List[str]:

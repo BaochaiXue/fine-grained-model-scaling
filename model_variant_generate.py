@@ -51,9 +51,7 @@ def load_data(batch_size: int, vit_16_using: bool) -> Tuple[DataLoader, DataLoad
     testset: datasets.CIFAR10 = datasets.CIFAR10(
         root="./data", train=False, download=True, transform=transform
     )
-    testloader: DataLoader = DataLoader(
-        testset, batch_size=batch_size * 2, shuffle=False
-    )
+    testloader: DataLoader = DataLoader(testset, batch_size=batch_size, shuffle=False)
 
     return trainloader, testloader
 
@@ -210,29 +208,6 @@ def train(
     torch.cuda.empty_cache()
 
 
-def test(model: nn.Module, testloader: DataLoader) -> None:
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    model.eval()
-    model.to(device)
-    correct: int = 0
-    total: int = 0
-    with torch.no_grad():
-        data: Tuple[torch.Tensor, torch.Tensor]
-        for data in testloader:
-            images: torch.Tensor
-            labels: torch.Tensor
-            images, labels = data
-            images, labels = images.to(device), labels.to(device)
-            outputs: torch.Tensor = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-    print(f"Accuracy of the network on the test images: {100 * correct / total}%")
-    # clean up
-    torch.cuda.empty_cache()
-
-
 def main(
     model_name: str, pruning_ratio: float, epochs: int, iterations: int, batch_size: int
 ) -> None:
@@ -252,7 +227,6 @@ def main(
     else:
         optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     train(model, trainloader, criterion, optimizer, epochs)
-    test(model, testloader)
     model_saving(model, model_name, pruning_ratio / iterations)
 
 

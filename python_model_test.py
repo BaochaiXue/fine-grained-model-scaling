@@ -57,24 +57,28 @@ class CandidateModel:
         self.model.eval()
         correct: int = 0
         total: int = 0
-        start_time: float = time.time()
+        total_time: float = 0.0
+
         with torch.no_grad():
-            inputs: torch.Tensor
-            targets: torch.Tensor
-            for inputs, targets in dataloader:
-                inputs, targets = inputs.to(device), targets.to(device)
-                outputs: torch.Tensor = self.model(inputs)
-                _, predicted = outputs.max(1)
-                total += targets.size(0)
-                correct += predicted.eq(targets).sum().item()
-        end_time: float = time.time()
-        inference_time: float = end_time - start_time
-        accuracy: float = 100.0 * correct / total
-        # clean up
+            for images, labels in dataloader:
+                images: torch.Tensor
+                labels: torch.Tensor
+                images, labels = images.to(device), labels.to(device)
+                start_time: float = time.time()
+                outputs: torch.Tensor = self.model(images)
+                predicted: torch.Tensor
+                _, predicted = torch.max(outputs.data, 1)
+                total_time += time.time() - start_time
+                total += labels.size(0)  # number of labels
+                correct += (predicted == labels).sum().item()
+
+        average_time: float = total_time / total
+        accuracy: float = 100 * correct / total
+        # clearing the cache
         torch.cuda.empty_cache()
         self.accuracy = accuracy
-        self.inference_time = inference_time
-        return accuracy, inference_time
+        self.inference_time = average_time
+        return accuracy, average_time
 
     def save_info_to_json(self, file_path: str = "model_info.json") -> None:
         model_info: Dict[str, Any] = {
