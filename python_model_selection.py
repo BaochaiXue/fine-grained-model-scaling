@@ -58,6 +58,17 @@ def select_models(group: pd.DataFrame, K: int, S: float) -> pd.DataFrame:
             accuracy_max - accuracy_min
         ):
             return False
+        # keep Pareto Front, that is, if a models has longer inference time, it should have higher accuracy, otherwise it should been discarded
+        # first sort the selected models by inference time
+        selected_models = selected_models.sort_values(by="inference_time")
+        # then check if the selected models are in the right order
+        for i in range(len(selected_models) - 1):
+            if (
+                selected_models.iloc[i]["accuracy"]
+                > selected_models.iloc[i + 1]["accuracy"]
+            ):
+                return False
+
         return total_storage <= normalized_S and len(set(individual)) == len(individual)
 
     toolbox: base.Toolbox = base.Toolbox()
