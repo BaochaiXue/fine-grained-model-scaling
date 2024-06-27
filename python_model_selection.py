@@ -60,7 +60,9 @@ def select_models(group: pd.DataFrame, K: int, S: float) -> pd.DataFrame:
             return False
         # keep Pareto Front, that is, if a models has longer inference time, it should have higher accuracy, otherwise it should been discarded
         # first sort the selected models by inference time
-        selected_models = selected_models.sort_values(by="inference_time")
+        selected_models = selected_models.sort_values(
+            by="inference_time", ascending=True
+        )
         # then check if the selected models are in the right order
         for i in range(len(selected_models) - 1):
             if (
@@ -90,7 +92,7 @@ def select_models(group: pd.DataFrame, K: int, S: float) -> pd.DataFrame:
         ),
     )
 
-    population: List[creator.Individual] = toolbox.population(n=1000)
+    population: List[creator.Individual] = toolbox.population(n=2000)
     hof: tools.HallOfFame = tools.HallOfFame(1)
     algorithms.eaMuPlusLambda(
         population,
@@ -99,14 +101,19 @@ def select_models(group: pd.DataFrame, K: int, S: float) -> pd.DataFrame:
         lambda_=200,
         cxpb=0.7,
         mutpb=0.3,
-        ngen=100,
+        ngen=500,
         verbose=False,
         halloffame=hof,
     )
-
-    best_individual: List[int] = hof[0]
-
-    print(f"Best individual: {best_individual}")
+    # go through the hall of fame and check if the selected models are in the right order
+    best_individual_idx: int = 0
+    for i in range(len(hof)):
+        if feasible(hof[i], group, S):
+            best_individual_idx = i
+            print(f"We found a feasible solution at index {i}")
+            break
+    print("Best individual: ", hof[best_individual_idx])
+    best_individual: List[int] = hof[best_individual_idx]
 
     # Denormalize the data
     group["model_size"] = (
