@@ -13,7 +13,10 @@ from deap import base, creator, tools, algorithms
 import os
 import shutil
 import argparse
+from main import read_config_from_json
 
+
+_, _, dataset_name = read_config_from_json("config.json")
 creator.create(
     "FitnessMulti", base.Fitness, weights=(1.0, 1.0, -1.0)
 )  # Minimize the third value
@@ -92,7 +95,7 @@ def select_models(group: pd.DataFrame, K: int, S: float) -> pd.DataFrame:
         ),
     )
 
-    population: List[creator.Individual] = toolbox.population(n=2000)
+    population: List[creator.Individual] = toolbox.population(n=2500)
     hof: tools.HallOfFame = tools.HallOfFame(1)
     algorithms.eaMuPlusLambda(
         population,
@@ -130,7 +133,7 @@ def select_models(group: pd.DataFrame, K: int, S: float) -> pd.DataFrame:
 
 
 def copy_model(model_name: str, pruning_factor: float, selected_dir: str) -> None:
-    base_dir: str = "model_variants"
+    base_dir: str = "model_variants" + "_" + dataset_name
     model_dir: str = os.path.join(base_dir, model_name)
 
     if pruning_factor == 0:

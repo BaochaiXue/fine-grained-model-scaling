@@ -14,9 +14,13 @@ import json
 from typing import Any, Dict
 import csv
 import sys
+from main import read_config_from_json
 
-base_directory: str = os.path.join(os.getcwd(), "model_variants")
-models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
+dataset_name: str
+models_name: List[str]
+pruning_factors: List[float]
+models_name, pruning_factors, dataset_name = read_config_from_json("config.json")
+base_directory: str = os.path.join(os.getcwd(), "model_variants" + "_" + dataset_name)
 test_batch_size: int = 1
 
 
@@ -127,17 +131,14 @@ def run_model_selection_script(S: float, K: int) -> None:
 
 
 def main(S: float, K: int):
-    base_directory: str = os.path.join(os.getcwd(), "model_variants")
-    models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
-    test_batch_size: int = 64
 
     all_model_infos: Dict[str, List[Dict[str, Any]]] = {}
     for model_name in models_name:
         directory = os.path.join(base_directory, model_name)
         model_infos = run_model_test(test_batch_size, directory, model_name)
         all_model_infos[model_name] = model_infos
-
-    output_file = "model_information.csv"
+    output_file: str
+    output_file = "model_information" + "_" + dataset_name + ".csv"
     save_to_csv(all_model_infos, output_file)
 
     for model_name, infos in all_model_infos.items():

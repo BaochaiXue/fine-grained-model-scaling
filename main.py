@@ -2,14 +2,14 @@ import subprocess
 import sys
 import os
 from typing import List, Tuple
-from typing import Iterator
+from typing import Iterator, Any, Dict
+import json
 
 epochs: int = 100
 transformer_epochs: int = 20
 iterations_in_pruning: int = 20
 batch_size: int = 256
 transformer_batch_size: int = 64
-models_name: List[str] = ["vit_b_16", "resnet50", "vgg16", "mobilenet_v3_large"]
 model_gen_script: str = "model_variant_generate.py"
 S: float = 1000
 K: int = 5
@@ -25,8 +25,35 @@ def float_range(start: float, end: float, step: float) -> Iterator[float]:
         start += step
 
 
-pruning_factors: List[float] = list(float_range(0.05, 1.0, 0.2))
-pruning_factors = list(map(lambda x: round(x, 2), pruning_factors))
+def read_config_from_json(
+    json_path: str = "config.json",
+) -> Tuple[List[str], List[float], str]:
+    try:
+        with open(json_path, "r") as file:
+            data: Dict[str, Any] = json.load(file)
+            models_name: List[str] = data.get("models", [])
+            prune_factors_range: List[float] = data.get("prune_factors", [])
+            pruning_factors: List[float] = list(
+                float_range(*prune_factors_range)
+                if prune_factors_range
+                else [0.05, 1.0, 0.05]
+            )
+            pruning_factors = list(map(lambda x: round(x, 2), pruning_factors))
+            if not models_name:
+                raise ValueError("No models found in the JSON file.")
+            if len(pruning_factors) != 3:
+                raise ValueError(
+                    "Pruning factors should contain three values: start, end, and step."
+                )
+            return models_name, pruning_factors, data.get("dataset", "CIFAR10")
+    except Exception as e:
+        print(f"An error occurred while reading the JSON file: {str(e)}")
+        sys.exit(1)
+
+
+models_name: List[str]
+pruning_factors: List[float]
+models_name, pruning_factors, _ = read_config_from_json("config.json")
 
 
 def call_generate_model(path: str, *args) -> None:

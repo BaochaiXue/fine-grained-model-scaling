@@ -1,0 +1,18 @@
+{
+    "_comment1": "This JSON file lists the models to be used in the script.",
+    "_comment2": "Each model name should correspond to a supported model in the script, including vit_b_16, resnet50, resnet152, vgg16, mobilenet_v3_large, alexnet",
+    "models": [
+        "resnet50",
+        "resnet152",
+        "vgg16",
+        "mobilenet_v3_large",
+        "alexnet"
+    ],
+    "prune_factors": [
+        0.04,
+        0.8,
+        0.04
+    ],
+    "_comment3": "The dataset to be used in the script, including CIFAR10, GTSRB",
+    "dataset": "GTSRB"
+}

@@ -13,45 +13,85 @@ from torchvision.models import (
     VGG16_Weights,
     resnet50,
     ResNet50_Weights,
+    resnet152,
+    ResNet152_Weights,
+    alexnet,
+    AlexNet_Weights,
     mobilenet_v3_large,
     MobileNet_V3_Large_Weights,
 )
 from torchvision.models.vision_transformer import VisionTransformer
 import numpy as np
 import torch.optim as optim
+from main import read_config_from_json
 
 
 def load_data(batch_size: int, vit_16_using: bool) -> Tuple[DataLoader, DataLoader]:
-    transform: Callable[[Any], Any] = (
-        transforms.Compose(
+    dataset_name: str
+    _, _, dataset_name = read_config_from_json("config.json")
+    if dataset_name == "CIFAR10":
+        transform: Callable[[Any], Any] = (
+            transforms.Compose(
+                [
+                    transforms.Resize((224, 224)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.4914, 0.4822, 0.4465], std=[0.2470, 0.2435, 0.2616]
+                    ),
+                ]
+            )
+            if vit_16_using
+            else transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.4914, 0.4822, 0.4465], std=[0.2470, 0.2435, 0.2616]
+                    ),
+                ]
+            )
+        )
+
+        trainset: datasets.CIFAR10 = datasets.CIFAR10(
+            root="./data", train=True, download=True, transform=transform
+        )
+        trainloader: DataLoader = DataLoader(
+            trainset, batch_size=batch_size, shuffle=True
+        )
+
+        testset: datasets.CIFAR10 = datasets.CIFAR10(
+            root="./data", train=False, download=True, transform=transform
+        )
+        testloader: DataLoader = DataLoader(
+            testset, batch_size=batch_size, shuffle=False
+        )
+
+    elif dataset_name == "GTSRB":
+        transform: Callable[[Any], Any] = transforms.Compose(
             [
                 transforms.Resize((224, 224)),
                 transforms.ToTensor(),
                 transforms.Normalize(
-                    mean=[0.4914, 0.4822, 0.4465], std=[0.2470, 0.2435, 0.2616]
+                    mean=[0.3337, 0.3064, 0.3171], std=[0.2672, 0.2564, 0.2629]
                 ),
             ]
         )
-        if vit_16_using
-        else transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.4914, 0.4822, 0.4465], std=[0.2470, 0.2435, 0.2616]
-                ),
-            ]
+
+        trainset: datasets.ImageFolder = datasets.ImageFolder(
+            root="./data/GTSRB/Final_Training/Images", transform=transform
         )
-    )
+        trainloader: DataLoader = DataLoader(
+            trainset, batch_size=batch_size, shuffle=True
+        )
 
-    trainset: datasets.CIFAR10 = datasets.CIFAR10(
-        root="./data", train=True, download=True, transform=transform
-    )
-    trainloader: DataLoader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
+        testset: datasets.ImageFolder = datasets.ImageFolder(
+            root="./data/GTSRB/Final_Test/Images", transform=transform
+        )
+        testloader: DataLoader = DataLoader(
+            testset, batch_size=batch_size, shuffle=False
+        )
 
-    testset: datasets.CIFAR10 = datasets.CIFAR10(
-        root="./data", train=False, download=True, transform=transform
-    )
-    testloader: DataLoader = DataLoader(testset, batch_size=batch_size, shuffle=False)
+    else:
+        raise ValueError("Dataset not supported.")
 
     return trainloader, testloader
 
@@ -68,6 +108,12 @@ def initialize_model(model_name: str, pretrain: bool) -> nn.Module:
     elif model_name == "resnet50":
         weights = ResNet50_Weights.DEFAULT if pretrain else None
         model = resnet50(weights=weights)
+    elif model_name == "resnet152":
+        weights = ResNet152_Weights.DEFAULT if pretrain else None
+        model = resnet152(weights=weights)
+    elif model_name == "alexnet":
+        weights = AlexNet_Weights.DEFAULT if pretrain else None
+        model = alexnet(weights=weights)
     elif model_name == "mobilenet_v3_large":
         weights = MobileNet_V3_Large_Weights.DEFAULT if pretrain else None
         model = mobilenet_v3_large(weights=weights)
@@ -159,7 +205,9 @@ def prune_model(
 
 
 def model_saving(model: nn.Module, model_name: str, pruning_factor: float) -> None:
-    base_dir: str = "model_variants"
+    dataset_name: str
+    _, _, dataset_name = read_config_from_json("config.json")
+    base_dir: str = "model_variants" + "_" + dataset_name
     if not os.path.exists(base_dir):
         os.makedirs(base_dir)
         print(f"Created directory: {base_dir}")
