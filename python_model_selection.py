@@ -180,7 +180,7 @@ def main(S: float, K: int) -> None:
     print("Selected Models:")
     print(all_selected_models)
 
-    selected_dir: str = "selected_models"
+    selected_dir: str = "selected_models" + "_" + dataset_name
     for idx, row in all_selected_models.iterrows():
         model_name: str = idx[0]
         pruning_factor: float = idx[1]
