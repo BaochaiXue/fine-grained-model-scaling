@@ -24,11 +24,15 @@ from torchvision.models.vision_transformer import VisionTransformer
 import numpy as np
 import torch.optim as optim
 from main import read_config_from_json
+import urllib.request
+import zipfile
+import subprocess
 
 
 def load_data(batch_size: int, vit_16_using: bool) -> Tuple[DataLoader, DataLoader]:
     dataset_name: str
     _, _, dataset_name = read_config_from_json("config.json")
+
     if dataset_name == "CIFAR10":
         transform: Callable[[Any], Any] = (
             transforms.Compose(
@@ -66,25 +70,36 @@ def load_data(batch_size: int, vit_16_using: bool) -> Tuple[DataLoader, DataLoad
         )
 
     elif dataset_name == "GTSRB":
-        transform: Callable[[Any], Any] = transforms.Compose(
-            [
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.3337, 0.3064, 0.3171], std=[0.2672, 0.2564, 0.2629]
-                ),
-            ]
+        transform: Callable[[Any], Any] = (
+            transforms.Compose(
+                [
+                    transforms.Resize((224, 224)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.3403, 0.3121, 0.3214], std=[0.2724, 0.2608, 0.2669]
+                    ),
+                ]
+            )
+            if vit_16_using
+            else transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.3403, 0.3121, 0.3214], std=[0.2724, 0.2608, 0.2669]
+                    ),
+                ]
+            )
         )
 
-        trainset: datasets.ImageFolder = datasets.ImageFolder(
-            root="./data/GTSRB/Final_Training/Images", transform=transform
+        trainset: datasets.GTSRB = datasets.GTSRB(
+            root="./data", split="train", download=True, transform=transform
         )
         trainloader: DataLoader = DataLoader(
             trainset, batch_size=batch_size, shuffle=True
         )
 
-        testset: datasets.ImageFolder = datasets.ImageFolder(
-            root="./data/GTSRB/Final_Test/Images", transform=transform
+        testset: datasets.GTSRB = datasets.GTSRB(
+            root="./data", split="test", download=True, transform=transform
         )
         testloader: DataLoader = DataLoader(
             testset, batch_size=batch_size, shuffle=False

@@ -5,8 +5,8 @@ from typing import List, Tuple
 from typing import Iterator, Any, Dict
 import json
 
-epochs: int = 100
-transformer_epochs: int = 20
+epochs: int = 150
+transformer_epochs: int = 80
 iterations_in_pruning: int = 20
 batch_size: int = 256
 transformer_batch_size: int = 64
@@ -33,6 +33,10 @@ def read_config_from_json(
             data: Dict[str, Any] = json.load(file)
             models_name: List[str] = data.get("models", [])
             prune_factors_range: List[float] = data.get("prune_factors", [])
+            if len(prune_factors_range) != 3:
+                raise ValueError(
+                    "Pruning factors should contain three values: start, end, and step."
+                )
             pruning_factors: List[float] = list(
                 float_range(*prune_factors_range)
                 if prune_factors_range
@@ -41,10 +45,7 @@ def read_config_from_json(
             pruning_factors = list(map(lambda x: round(x, 2), pruning_factors))
             if not models_name:
                 raise ValueError("No models found in the JSON file.")
-            if len(pruning_factors) != 3:
-                raise ValueError(
-                    "Pruning factors should contain three values: start, end, and step."
-                )
+
             return models_name, pruning_factors, data.get("dataset", "CIFAR10")
     except Exception as e:
         print(f"An error occurred while reading the JSON file: {str(e)}")
