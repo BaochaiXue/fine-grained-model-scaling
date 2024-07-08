@@ -162,7 +162,7 @@ def copy_model(model_name: str, pruning_factor: float, selected_dir: str) -> Non
 
 
 def main(S: float, K: int) -> None:
-    model_info: pd.DataFrame = pd.read_csv("model_information.csv")
+    model_info: pd.DataFrame = pd.read_csv("model_information_" + dataset_name + ".csv")
     model_info.set_index(["model", "prune_rate"], inplace=True)
     model_info["model_size"] = model_info["model_size"] / 1024 / 1024
     model_groups: typing.Dict[str, pd.DataFrame] = dict(
